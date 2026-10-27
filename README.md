@@ -46,6 +46,7 @@ npx skills add evaboot-labs/ai-abm-agent
 ```text
 $ python3 abm.py facts data/committee.json data/accounts.json > queue/accounts.json
 dropped 24 people whose current company is not a target account
+5 target accounts, 35 people: Rise Up 11, AssessFirst 10, Boond 8, Innovorder 3, blgCloud ERP SaaS 3
 ```
 
 **3. Your agent maps each committee and writes the plan.** A tier for each account, a role for each person (decision maker, champion, influencer, user or skip), then who to contact first, on which channel, with one angle each. `abm.py check` rejects a person with no role, an email to an unverified address, a broken contact order, an angle over 30 words, or a guess at someone's gender.
