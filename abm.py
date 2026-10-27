@@ -78,6 +78,8 @@ def facts(committee_path, accounts_path):
             "people": people,
         })
     out.sort(key=lambda r: (-len(r["people"]), r["account"]))
+    print(f"{len(out)} target accounts, {sum(len(r['people']) for r in out)} people: "
+          + ", ".join(f"{r['account']} {len(r['people'])}" for r in out), file=sys.stderr)
     return out
 
 
