@@ -1,0 +1,267 @@
+{
+  "name": "AI ABM agent (Evaboot + Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "evaboot-abm",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "8712551a-00cd-4e8a-8300-fe6d9f947304",
+      "name": "Committee from Evaboot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "ec5b9a06-353a-4106-954c-641fe43412a7"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6c11a11d-22e2-45dd-9f77-fda47e80a238",
+              "name": "target_accounts",
+              "type": "string",
+              "value": "PASTE_THE_LINKEDIN_COMPANY_URLS_OF_YOUR_TARGET_ACCOUNTS, comma separated"
+            },
+            {
+              "id": "b3498ff1-36c7-4aaf-ac06-1ac4adac7e42",
+              "name": "tiers",
+              "type": "string",
+              "value": "Tier 1: a sales team of 15 or more, or a team that grew in the last year. Tier 2: a sales team of 5 to 14. Tier 3: a smaller team, or no sign that they prospect."
+            },
+            {
+              "id": "81a98850-7950-48f3-88b4-5cf94b5aa8ef",
+              "name": "committee",
+              "type": "string",
+              "value": "Decision maker: Head or VP of Sales, CRO, Chief Commercial Officer, CEO or founder under 100 people. Champion: Sales Ops, RevOps, Head of SDR or BDR team, Head of Growth. Influencer: Marketing Ops, Head of Marketing, Demand Generation. User: SDRs, BDRs, Account Executives, Business Developers. Skip: everyone else."
+            },
+            {
+              "id": "51098394-99aa-4e05-a8f3-7689c00824c5",
+              "name": "contact_rules",
+              "type": "string",
+              "value": "Start with the champion, then the decision maker with what the champion cares about, then one user. An influencer comes last, and only on a tier 1 account. At most 4 people per account."
+            },
+            {
+              "id": "27d1887e-ab55-443f-83e9-ea98bdbd441e",
+              "name": "offer",
+              "type": "string",
+              "value": "Evaboot exports LinkedIn Sales Navigator searches and lists to a spreadsheet or CRM, with verified professional emails, and keeps lead lists fresh with recurring exports."
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "83b6be65-6188-4806-8d48-002324f6096e",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Same as abm.py facts: keep the people whose current company is a target account, one item per account.\n// A people search filtered on an account list also returns people whose main job is elsewhere.\nconst s = $('Settings').first().json;\nconst id = v => (String(v || '').match(/company\\/(\\d+)/) || [])[1] || String(v || '').trim();\nconst targets = new Set(String(s.target_accounts).split(',').map(id).filter(Boolean));\nconst num = v => { const n = parseFloat(String(v ?? '').replace(/[,%]/g, '')); return isNaN(n) ? null : n; };\nconst words = (t, n) => String(t || '').split(/\\s+/).join(' ').trim().slice(0, n);\nconst accounts = {};\nlet dropped = 0;\nfor (const p of $('Committee from Evaboot').first().json.body.prospects || []) {\n  const key = id(p['Company Linkedin URL Unique ID']);\n  if (!targets.has(key)) { dropped++; continue; }\n  const a = accounts[key] ??= { id: key, account: p['Company Name'] || key, employees: p['Company Employee Range'] || '',\n    growth_1y_pct: num(p['Company Employee Growth 1 Year (%)']), sales_team: num(p['Sales Team Size']),\n    bizdev_team: num(p['Business Development Size']), description: words(p['Company Description'], 400), people: [] };\n  const y = num(p['Years in Position']), m = num(p['Months in Position']);\n  a.people.push({ id: p['Linkedin URL Unique ID'] || p['Linkedin URL Public'] || p['Full Name'],\n    name: p['Full Name'] || '', first_name: p['First Name'] || '', title: words(p['Current Job'], 120),\n    months_in_role: y === null && m === null ? null : (y || 0) * 12 + (m || 0),\n    email: p['Email'] || '', email_status: String(p['Email Status'] || 'not found').toLowerCase(),\n    linkedin: p['Linkedin URL Public'] || '' });\n}\nreturn Object.values(accounts).map(a => ({ json: { ...a, dropped } }));\n"
+      },
+      "id": "857bdf59-8d02-4c2c-b852-424208d17f12",
+      "name": "Group by account",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "hasOutputParser": true,
+        "text": "={{ JSON.stringify({ account: $json.account, employees: $json.employees, growth_1y_pct: $json.growth_1y_pct, sales_team: $json.sales_team, bizdev_team: $json.bizdev_team, description: $json.description, people: $json.people.map(p => ({ id: p.id, first_name: p.first_name, title: p.title, months_in_role: p.months_in_role, email_status: p.email_status })) }) }}",
+        "options": {
+          "systemMessage": "=You map the buying committee of one target account for an account-based campaign. The JSON is the account (sales team, growth, description) and the people Evaboot found there (title, months in role, email status). Use only these facts; never invent anything.\n\nReturn {tier, why, people: [{id, role, order, channel, angle}]}:\n- tier: 1, 2 or 3, from the tiers below. why: one line under 30 words from the account facts.\n- role: decision_maker, champion, influencer, user or skip, from the committee below. Every person gets a role.\n- order, channel and angle only for the people you contact, following the contact rules. order runs 1, 2, 3.\n- channel: \"email\" only if email_status is safe, otherwise \"linkedin\".\n- angle: one sentence under 25 words about their own job, from their title and the account facts. State facts, never guesses: no \"likely\", \"probably\" or \"could\". Mention months in role only when it is under 6.\n- A row whose name is not a person (a team or company page, such as \"Marketing <Company>\") is skip.\n- Never guess anyone's gender: no he, she, him or her. Use the first name, \"they\" or the role.\n\nTiers:\n{{ $('Settings').first().json.tiers }}\n\nCommittee:\n{{ $('Settings').first().json.committee }}\n\nContact rules:\n{{ $('Settings').first().json.contact_rules }}\n\nWhat we sell:\n{{ $('Settings').first().json.offer }}",
+          "maxIterations": 3
+        }
+      },
+      "id": "e2c1978a-e264-433b-8218-76b3fbdce9db",
+      "name": "Map the committee",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5-5",
+          "cachedResultName": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 4000
+        }
+      },
+      "id": "79a007fe-e485-431a-817f-d4900f6040f1",
+      "name": "Claude",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        760,
+        240
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "",
+          "name": "Anthropic"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\n    \"tier\",\n    \"why\",\n    \"people\"\n  ],\n  \"properties\": {\n    \"tier\": {\n      \"type\": \"number\"\n    },\n    \"why\": {\n      \"type\": \"string\"\n    },\n    \"people\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\n          \"id\",\n          \"role\"\n        ],\n        \"properties\": {\n          \"id\": {\n            \"type\": \"string\"\n          },\n          \"role\": {\n            \"type\": \"string\"\n          },\n          \"order\": {\n            \"type\": \"number\"\n          },\n          \"channel\": {\n            \"type\": \"string\"\n          },\n          \"angle\": {\n            \"type\": \"string\"\n          }\n        }\n      }\n    }\n  }\n}"
+      },
+      "id": "172d2b3b-53bf-483b-bb07-dc5f3aec3886",
+      "name": "Committee map",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Same rules as abm.py check: an incomplete contact is dropped, email only with a verified address,\n// the contact order runs 1, 2, 3 per account. One row per contact for the Data table.\nconst today = new Date().toISOString().slice(0, 10);\nconst out = [];\n$input.all().forEach((item, i) => {\n  const acc = $('Group by account').all()[i].json;\n  const plan = item.json.output || {};\n  const people = Object.fromEntries(acc.people.map(p => [p.id, p]));\n  const contacts = (plan.people || []).filter(m => people[m.id] && m.role && m.role !== 'skip' && m.angle)\n    .sort((a, b) => (a.order || 99) - (b.order || 99)).slice(0, 4);\n  contacts.forEach((m, n) => {\n    const p = people[m.id];\n    const channel = m.channel === 'email' && p.email_status === 'safe' ? 'email' : 'linkedin';\n    out.push({ json: { date: today, account: acc.account, tier: Number(plan.tier) || 3, why: plan.why || '',\n      order: n + 1, name: p.name, title: p.title, role: m.role, channel,\n      contact: channel === 'email' ? p.email : p.linkedin, angle: m.angle } });\n  });\n});\nreturn out;\n"
+      },
+      "id": "d6f27602-5a2e-4c00-b2fc-dec33662718b",
+      "name": "Check the plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ABM plan"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "2eefa0f8-7aa1-4a7b-a445-14509fc3e835",
+      "name": "Add to ABM plan",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Committee from Evaboot": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Group by account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group by account": {
+      "main": [
+        [
+          {
+            "node": "Map the committee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map the committee": {
+      "main": [
+        [
+          {
+            "node": "Check the plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check the plan": {
+      "main": [
+        [
+          {
+            "node": "Add to ABM plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Map the committee",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Committee map": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Map the committee",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

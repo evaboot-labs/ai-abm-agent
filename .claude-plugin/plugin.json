@@ -1,0 +1,13 @@
+{
+  "name": "ai-abm-agent",
+  "version": "1.0.0",
+  "description": "An AI Agent exports the buying committee of your target accounts from Sales Navigator through Evaboot, maps each person to a role, tiers the accounts and writes who to contact first, on which channel and with which angle.",
+  "author": { "name": "Evaboot", "url": "https://evaboot.com" },
+  "homepage": "https://evaboot.com/blog/ai-agents-for-account-based-marketing",
+  "repository": "https://github.com/evaboot-labs/ai-abm-agent",
+  "license": "MIT",
+  "privacyPolicyUrl": "https://evaboot.com/privacy-policy",
+  "keywords": ["account-based-marketing", "abm", "ai-agent", "sales-navigator", "evaboot", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
