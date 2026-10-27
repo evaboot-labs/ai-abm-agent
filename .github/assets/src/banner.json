@@ -1,0 +1,7 @@
+{"layout": "flow", "eyebrow": "evaboot-labs · ai-abm-agent", "headline": "Who to contact at each account.",
+ "subline": "Target accounts in. Each buying committee mapped, the first contact, channel and angle out.",
+ "nodes": [{"label": "01 · Accounts", "title": "Evaboot", "caption": "Account list, committee export"},
+           {"label": "02 · Group", "title": "abm.py", "caption": "People per target account"},
+           {"label": "03 · Map", "title": "AI Agent", "caption": "Role, tier, order, angle"},
+           {"label": "04 · Result", "title": "ABM plan", "caption": "Who first, which channel"}],
+ "spec": "server <em>mcp.evaboot.com/mcp</em> · new committee members on each run"}
